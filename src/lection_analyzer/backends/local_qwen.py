@@ -34,7 +34,13 @@ class LocalQwenBackend:
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             self.model_id, **load_kwargs
         )
-        self.processor = AutoProcessor.from_pretrained(self.model_id)
+        # Cap vision tokens: a full-res board screenshot can otherwise expand into tens of
+        # thousands of tokens and OOM a T4. ~1.0 MP (max_pixels) is plenty to read a board.
+        min_pixels = int(cfg.get("min_pixels", 256 * 28 * 28))
+        max_pixels = int(cfg.get("max_pixels", 1280 * 28 * 28))
+        self.processor = AutoProcessor.from_pretrained(
+            self.model_id, min_pixels=min_pixels, max_pixels=max_pixels
+        )
 
     def _generate(self, messages: List[Dict[str, Any]]) -> str:
         from qwen_vl_utils import process_vision_info

@@ -23,22 +23,43 @@ from .config import Config
 from .schemas import Keyframe, KeyframeIndex, Transcript
 
 
-def _episodes(video: Path, threshold: float, min_seconds: float) -> List[Tuple[float, float]]:
-    """Return (start, end) spans between board changes, dropping too-short ones."""
+def _subdivide(spans: List[Tuple[float, float]], max_seconds: float) -> List[Tuple[float, float]]:
+    """Split any span longer than max_seconds into back-to-back sub-windows.
+
+    This is the safety net: scene cuts alone can fail (a slowly hand-written board never
+    triggers one), which would leave the whole lecture as a single span and OOM the models.
+    Time-capping guarantees every episode — and thus every model call — is bounded.
+    """
+    out: List[Tuple[float, float]] = []
+    for s, e in spans:
+        if e - s <= max_seconds:
+            out.append((s, e))
+            continue
+        t = s
+        while t < e - 0.1:
+            out.append((t, min(t + max_seconds, e)))
+            t += max_seconds
+    return out
+
+
+def _episodes(
+    video: Path, threshold: float, min_seconds: float, max_seconds: float
+) -> List[Tuple[float, float]]:
+    """Return bounded (start, end) episode spans, from scene cuts + a hard time cap."""
     from scenedetect import ContentDetector, detect
 
     scenes = detect(str(video), ContentDetector(threshold=threshold))
-    spans: List[Tuple[float, float]] = []
-    for start, end in scenes:
-        s, e = start.get_seconds(), end.get_seconds()
-        if e - s >= min_seconds:
-            spans.append((s, e))
-    if not spans:  # no cuts detected (single static board) -> treat whole video as one episode
+    spans = [
+        (start.get_seconds(), end.get_seconds())
+        for start, end in scenes
+        if end.get_seconds() - start.get_seconds() >= min_seconds
+    ]
+    if not spans:  # no usable cuts (e.g. a single static hand-written board)
         cap = cv2.VideoCapture(str(video))
         dur = cap.get(cv2.CAP_PROP_FRAME_COUNT) / max(cap.get(cv2.CAP_PROP_FPS), 1.0)
         cap.release()
         spans = [(0.0, dur)]
-    return spans
+    return _subdivide(spans, max_seconds)
 
 
 def _grab_frame(cap: "cv2.VideoCapture", t: float, out_path: Path) -> bool:
@@ -58,11 +79,13 @@ def run(cfg: Config, transcript: Transcript) -> KeyframeIndex:
 
     kf = cfg.keyframes
     threshold = float(kf.get("scene_threshold", 27.0))
-    min_seconds = float(kf.get("min_episode_seconds", 20))
+    min_seconds = float(kf.get("min_episode_seconds", 8))
+    max_seconds = float(kf.get("max_episode_seconds", 240))
     phash_dist = int(kf.get("phash_distance", 6))
+    max_chars = int(kf.get("max_transcript_chars", 6000))
 
     print("[keyframes] segmenting into board episodes...")
-    spans = _episodes(cfg.raw_video, threshold, min_seconds)
+    spans = _episodes(cfg.raw_video, threshold, min_seconds, max_seconds)
 
     import imagehash
     from PIL import Image
@@ -80,13 +103,15 @@ def run(cfg: Config, transcript: Transcript) -> KeyframeIndex:
             tmp.unlink(missing_ok=True)  # board barely changed across episodes; merge
             continue
         kept_hashes.append(h)
+        win = transcript.window(start, end, pad=2.0)  # this episode's local speech = task context
+        if len(win) > max_chars:                       # guardrail against any over-long window
+            win = win[:max_chars] + " …[truncated]"
         kept.append(
             Keyframe(
                 timestamp=t_final,
                 path=str(tmp.relative_to(cfg.data_dir)),
                 reason="episode_end",
-                # the WHOLE spoken content of this episode = this task's local context
-                transcript_window=transcript.window(start, end, pad=2.0),
+                transcript_window=win,
             )
         )
     cap.release()

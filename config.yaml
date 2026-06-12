@@ -24,8 +24,10 @@ keyframes:
   # The lecture is segmented into board "episodes" (one task each). We keep only the
   # final/fullest frame of each episode — the result — and its local transcript.
   scene_threshold: 27.0    # PySceneDetect content threshold (lower = more/shorter episodes)
-  min_episode_seconds: 20  # ignore episodes shorter than this (transient board flickers)
+  min_episode_seconds: 8   # ignore episodes shorter than this (transient board flickers)
+  max_episode_seconds: 240 # HARD cap: subdivide longer spans so every call stays bounded
   phash_distance: 6        # merge episodes whose final boards are near-identical (<= => dup)
+  max_transcript_chars: 6000  # truncate an episode's transcript fed to the models (guardrail)
 
 backends:
   vl_backend: local          # local | claude
@@ -34,6 +36,7 @@ backends:
     model_id: Qwen/Qwen2.5-VL-7B-Instruct
     load_in_4bit: true
     max_new_tokens: 1024
+    max_pixels: 1003520   # 1280*28*28 ≈ 1.0 MP cap on board images (bounds vision tokens)
   claude:
     model: claude-opus-4-8
     max_tokens: 4096
