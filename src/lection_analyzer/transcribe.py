@@ -49,6 +49,21 @@ def _write_srt(transcript: Transcript, path: Path) -> None:
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def _clock(t: float) -> str:
+    h, rem = divmod(int(t), 3600)
+    m, s = divmod(rem, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def _write_txt(transcript: Transcript, path: Path) -> None:
+    """Readable transcript: one line per segment, prefixed with [HH:MM:SS-HH:MM:SS]."""
+    lines = [
+        f"[{_clock(seg.start)}-{_clock(seg.end)}] {seg.text.strip()}"
+        for seg in transcript.segments
+    ]
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def run(cfg: Config) -> Transcript:
     cfg.ensure_dirs()
     if cfg.transcript_json.exists():
@@ -102,8 +117,11 @@ def run(cfg: Config) -> Transcript:
 
     cfg.transcript_json.write_text(transcript.model_dump_json(indent=2), encoding="utf-8")
     _write_srt(transcript, cfg.transcript_srt)
+    _write_txt(transcript, cfg.transcript_txt)
     print(
-        f"[transcribe] {len(segments)} segments, langs={transcript.language_summary} "
-        f"-> {cfg.transcript_json}"
+        f"[transcribe] {len(segments)} segments, langs={transcript.language_summary}\n"
+        f"[transcribe]   json: {cfg.transcript_json}\n"
+        f"[transcribe]   srt:  {cfg.transcript_srt}\n"
+        f"[transcribe]   txt:  {cfg.transcript_txt}  (text + timecodes)"
     )
     return transcript

@@ -59,6 +59,10 @@ class Config:
         return self.data_dir / "transcript.srt"
 
     @property
+    def transcript_txt(self) -> Path:
+        return self.data_dir / "transcript.txt"
+
+    @property
     def keyframe_index_json(self) -> Path:
         return self.data_dir / "frames_index.json"
 

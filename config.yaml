@@ -14,7 +14,7 @@ ingest:
   gdrive_url: null       # full Google Drive share URL (alternative to gdrive_id)
 
 transcribe:
-  model: large-v3        # faster-whisper model size
+  model: medium          # faster-whisper model size (tiny/base/small/medium/large-v3)
   device: auto           # auto -> cuda if available else cpu
   compute_type: default  # e.g. float16 (GPU) / int8 (CPU)
   language: null         # null = autodetect per chunk (he/ru mixed); or force "he"/"ru"

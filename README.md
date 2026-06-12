@@ -10,7 +10,7 @@ worked numeric example, and the exact output appearance shown on the board.
 ```
 video ─▶ ingest ─▶ transcribe ─▶ keyframes ─▶ vl_report ─▶ synthesize ─▶ output/*.json
         (drive/    (Whisper      (scene cuts  (VL: tables/  (cluster into
-         local)     large-v3)     + cue words) formulas/     task classes)
+         local)     medium)       + cue words) formulas/     task classes)
                                                schemes)
 ```
 
