@@ -20,6 +20,7 @@ Pillow>=10.0
 transformers>=4.49
 accelerate>=0.30
 qwen-vl-utils>=0.0.8
+bitsandbytes>=0.46.1   # required for load_in_4bit local Qwen backend
 
 # Optional API backend
 anthropic>=0.40

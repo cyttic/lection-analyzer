@@ -1,7 +1,8 @@
-"""Stage 5 — synthesize: moments + transcript -> one TaskSpec JSON per task class.
+"""Stage 5 — synthesize: per-episode -> one TaskSpec JSON per task class.
 
-This is the final stage. The synthesis LLM clusters the visual moments into task
-classes and emits the structured specs your Agent loads. Each spec is written as both
+This is the final stage. It makes ONE small LLM call per board episode (each ≈ an
+independent task), turning that episode's structured visual data + local transcript
+into TaskSpec(s). No global pass over the whole lecture. Each spec is written as both
 ``<task_class>.json`` (machine) and ``<task_class>.md`` (eyeball).
 """
 
@@ -13,7 +14,7 @@ import re
 from .backends.base import LLMBackend, extract_json
 from .config import Config
 from .prompts import SYN_SYSTEM, synthesis_prompt
-from .schemas import TaskSource, TaskSpec, Transcript, VLReport
+from .schemas import Moment, TaskSource, TaskSpec, Transcript, VLReport
 
 
 def _slugify(name: str, fallback: str) -> str:
@@ -41,39 +42,64 @@ def _to_md(spec: TaskSpec) -> str:
     return "\n".join(lines)
 
 
+def _clock(t: float) -> str:
+    m, s = divmod(int(t), 60)
+    return f"{m:02d}:{s:02d}"
+
+
+def _spec_from_item(cfg: Config, item: dict, moment: Moment, idx: int) -> TaskSpec | None:
+    """Build a validated TaskSpec from one raw model item, injecting the source from
+    the episode itself (timestamps/frames are authoritative from the moment, not the LLM)."""
+    if not isinstance(item, dict):
+        return None
+    item["source"] = TaskSource(
+        lecture=cfg.lecture,
+        timestamps=[f"{_clock(moment.timestamp_start)}-{_clock(moment.timestamp_end)}"],
+        frames=list(moment.frame_paths),
+    ).model_dump()
+    item.setdefault("task_class", f"task_{idx}")
+    item["task_class"] = _slugify(item["task_class"], f"task_{idx}")
+    try:
+        return TaskSpec.model_validate(item)
+    except Exception as e:
+        print(f"[synthesize]   ! skipping malformed task: {e}")
+        return None
+
+
 def run(cfg: Config, report: VLReport, transcript: Transcript, llm: LLMBackend) -> list[TaskSpec]:
+    """One small LLM call PER episode (independent task), never the whole lecture at once.
+
+    Each call sees only that episode's structured visual data + its local transcript, so
+    the prompt is bounded regardless of lecture length — no O(n^2) attention blow-up, cheap
+    enough to run locally. An episode may yield several tasks (multi-task board) or none
+    (pure narration). Duplicate task slugs across episodes are merged at the end.
+    """
     cfg.ensure_dirs()
-    moments_json = json.dumps(
-        [m.model_dump() for m in report.moments], ensure_ascii=False, indent=2
-    )
-    transcript_text = "\n".join(s.text.strip() for s in transcript.segments)
-    user = synthesis_prompt(transcript_text, moments_json)
 
-    print(f"[synthesize] clustering {len(report.moments)} moments into task classes...")
-    resp = llm.complete(SYN_SYSTEM, user)
-    raw = json.loads(extract_json(resp))
-    if isinstance(raw, dict):
-        raw = [raw]
-
-    specs: list[TaskSpec] = []
-    for i, item in enumerate(raw, 1):
-        if not isinstance(item, dict):
-            continue
-        src = item.get("source", {}) or {}
-        item["source"] = TaskSource(
-            lecture=cfg.lecture,
-            timestamps=src.get("timestamps", []),
-            frames=src.get("frames", []),
-        ).model_dump()
-        item.setdefault("task_class", f"task_{i}")
-        item["task_class"] = _slugify(item["task_class"], f"task_{i}")
+    by_slug: dict[str, TaskSpec] = {}
+    for i, moment in enumerate(report.moments, 1):
+        moment_json = json.dumps(moment.model_dump(), ensure_ascii=False, indent=2)
+        user = synthesis_prompt(moment.transcript_excerpt, moment_json)
+        print(f"[synthesize] episode {i}/{len(report.moments)} "
+              f"@ {_clock(moment.timestamp_start)} ({moment.kind})")
         try:
-            spec = TaskSpec.model_validate(item)
+            resp = llm.complete(SYN_SYSTEM, user)
+            raw = json.loads(extract_json(resp))
         except Exception as e:
-            print(f"[synthesize]   ! skipping malformed task class #{i}: {e}")
+            print(f"[synthesize]   ! call/parse failed, skipping episode: {e}")
             continue
-        specs.append(spec)
+        if isinstance(raw, dict):
+            raw = [raw]
+        for item in raw if isinstance(raw, list) else []:
+            spec = _spec_from_item(cfg, item, moment, i)
+            if spec is None:
+                continue
+            if spec.task_class in by_slug:  # same task taught twice -> keep the richer one
+                if len(spec.algorithm_steps) <= len(by_slug[spec.task_class].algorithm_steps):
+                    continue
+            by_slug[spec.task_class] = spec
 
+    specs = list(by_slug.values())
     for spec in specs:
         (cfg.output_dir / f"{spec.task_class}.json").write_text(
             spec.model_dump_json(indent=2), encoding="utf-8"

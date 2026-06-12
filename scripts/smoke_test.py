@@ -76,23 +76,29 @@ with tempfile.TemporaryDirectory() as td:
         lecture="lecT",
         segments=[Segment(start=0, end=3, text="היום נלמד אלגוריתם אוקלידס", lang="he")],
     )
-    # fake a frame file so paths resolve
+    # fake two episode frames so paths resolve; both teach the same task -> must merge to 1
     (cfg.frames_dir / "00001000.jpg").write_bytes(b"\xff\xd8\xff")
+    (cfg.frames_dir / "00009000.jpg").write_bytes(b"\xff\xd8\xff")
     index = KeyframeIndex(lecture="lecT", frames=[
-        Keyframe(timestamp=1.0, path="frames/00001000.jpg", reason="cue:algorithm",
+        Keyframe(timestamp=1.0, path="frames/00001000.jpg", reason="episode_end",
                  transcript_window="אלגוריתם אוקלידס"),
+        Keyframe(timestamp=9.0, path="frames/00009000.jpg", reason="episode_end",
+                 transcript_window="עוד דוגמה לאלגוריתם אוקלידס"),
     ])
 
     report = vl_report.run(cfg, index, FakeVL())
+    assert len(report.moments) == 2
     assert report.moments[0].kind == "algorithm"
     assert report.moments[0].tables[0].rows[0] == ["48", "18"]
     print("vl_report: ok")
 
     specs = synthesize.run(cfg, report, transcript, FakeLLM())
-    assert len(specs) == 1
+    assert len(specs) == 1, f"two episodes of the same task should merge to 1, got {len(specs)}"
     s0 = specs[0]
     assert s0.task_class == "euclid_gcd", s0.task_class  # slugified
     assert s0.source.lecture == "lecT"  # injected
+    assert s0.source.timestamps == ["00:01-00:01"], s0.source.timestamps  # from the moment, not LLM
+    assert s0.source.frames == ["frames/00001000.jpg"], s0.source.frames
     assert s0.worked_example.result == "gcd = 6"
     out_json = cfg.output_dir / "euclid_gcd.json"
     out_md = cfg.output_dir / "euclid_gcd.md"

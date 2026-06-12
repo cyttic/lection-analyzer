@@ -9,10 +9,18 @@ worked numeric example, and the exact output appearance shown on the board.
 
 ```
 video ─▶ ingest ─▶ transcribe ─▶ keyframes ─▶ vl_report ─▶ synthesize ─▶ output/*.json
-        (drive/    (Whisper      (scene cuts  (VL: tables/  (cluster into
-         local)     medium)       + cue words) formulas/     task classes)
-                                               schemes)
+        (drive/    (Whisper      (board        (VL: tables/  (one small call
+         local)     medium)       episodes:     formulas/     PER episode →
+                                  1 final frame  schemes)      task specs)
+                                  each)
 ```
+
+**Per-task, not whole-lecture.** A lecture is a sequence of mostly independent tasks.
+`keyframes` splits it into board *episodes* (one per board-wipe) and keeps only each
+episode's **final frame** — the completed result, not the in-progress writing. `synthesize`
+then makes **one small LLM call per episode** (that frame's data + its local transcript),
+so prompt size is bounded by a single task, never the whole lecture. This keeps it within a
+single T4's memory and cheap enough to run **locally** — no giant context, no per-lecture API bill.
 
 Each stage **caches its artifact** under `data/<lecture>/`, so a crashed or long run
 resumes cheaply, and you can re-run just one stage by deleting its artifact.

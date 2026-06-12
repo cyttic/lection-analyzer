@@ -21,21 +21,11 @@ transcribe:
   vad_filter: true       # voice-activity filter to drop silence
 
 keyframes:
-  scene_threshold: 27.0  # PySceneDetect content threshold (lower = more cuts)
-  min_seconds_between: 4 # suppress keyframes closer than this
-  phash_distance: 6      # perceptual-hash dedup threshold (<= => duplicate)
-  cue_keywords:          # boost sampling when these appear in transcript
-    - algorithm
-    - אלגוריתם
-    - formula
-    - נוסחה
-    - example
-    - דוגמה
-    - table
-    - טבלה
-    - теорема
-    - алгоритм
-    - пример
+  # The lecture is segmented into board "episodes" (one task each). We keep only the
+  # final/fullest frame of each episode — the result — and its local transcript.
+  scene_threshold: 27.0    # PySceneDetect content threshold (lower = more/shorter episodes)
+  min_episode_seconds: 20  # ignore episodes shorter than this (transient board flickers)
+  phash_distance: 6        # merge episodes whose final boards are near-identical (<= => dup)
 
 backends:
   vl_backend: local          # local | claude

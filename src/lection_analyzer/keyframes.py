@@ -1,12 +1,15 @@
-"""Stage 3 — keyframes: pick the frames worth analyzing.
+"""Stage 3 — keyframes: segment the lecture into board EPISODES, keep one frame each.
 
-Combines three signals:
-  * scene cuts (PySceneDetect content detector) — board wiped / slide changed,
-  * transcript cue words (algorithm / formula / example / table ...) — boost sampling
-    where the lecturer flags something important,
-then keeps the *fullest* frame of each stable board segment (the frame just before
-the next change), dedups near-identical frames with a perceptual hash, and enforces
-a minimum spacing. Output: jpgs under ``cfg.frames_dir`` + ``frames_index.json``.
+A lecture is a sequence of mostly independent tasks. Each task lives on the board as
+an "episode": the lecturer builds it up, then wipes/changes the board to start the next.
+Scene cuts (PySceneDetect content detector) mark those wipes, so each scene ≈ one episode.
+
+We only want the *result* — the completed board — so for each episode we keep a single
+frame just before its end cut (the fullest state), NOT the in-progress frames. Each kept
+frame also carries that episode's full local transcript, which is all the synthesis stage
+needs for that task (no global transcript, no giant attention pass).
+
+Output: one jpg per episode under ``cfg.frames_dir`` + ``frames_index.json``.
 """
 
 from __future__ import annotations
@@ -20,28 +23,22 @@ from .config import Config
 from .schemas import Keyframe, KeyframeIndex, Transcript
 
 
-def _scene_candidates(video: Path, threshold: float) -> List[Tuple[float, str]]:
-    """Timestamps just before each detected scene cut, plus the very first frame."""
+def _episodes(video: Path, threshold: float, min_seconds: float) -> List[Tuple[float, float]]:
+    """Return (start, end) spans between board changes, dropping too-short ones."""
     from scenedetect import ContentDetector, detect
 
     scenes = detect(str(video), ContentDetector(threshold=threshold))
-    cands: List[Tuple[float, str]] = [(0.5, "scene_start")]
-    for _start, end in scenes:
-        # 'end' is the cut point; the frame just before it is the fullest board.
-        cands.append((max(0.0, end.get_seconds() - 0.4), "scene_cut"))
-    return cands
-
-
-def _cue_candidates(transcript: Transcript, keywords: List[str]) -> List[Tuple[float, str]]:
-    lowered = [k.lower() for k in keywords]
-    cands: List[Tuple[float, str]] = []
-    for seg in transcript.segments:
-        text = seg.text.lower()
-        for kw in lowered:
-            if kw in text:
-                cands.append((seg.end, f"cue:{kw}"))
-                break
-    return cands
+    spans: List[Tuple[float, float]] = []
+    for start, end in scenes:
+        s, e = start.get_seconds(), end.get_seconds()
+        if e - s >= min_seconds:
+            spans.append((s, e))
+    if not spans:  # no cuts detected (single static board) -> treat whole video as one episode
+        cap = cv2.VideoCapture(str(video))
+        dur = cap.get(cv2.CAP_PROP_FRAME_COUNT) / max(cap.get(cv2.CAP_PROP_FPS), 1.0)
+        cap.release()
+        spans = [(0.0, dur)]
+    return spans
 
 
 def _grab_frame(cap: "cv2.VideoCapture", t: float, out_path: Path) -> bool:
@@ -61,22 +58,11 @@ def run(cfg: Config, transcript: Transcript) -> KeyframeIndex:
 
     kf = cfg.keyframes
     threshold = float(kf.get("scene_threshold", 27.0))
-    min_gap = float(kf.get("min_seconds_between", 4))
+    min_seconds = float(kf.get("min_episode_seconds", 20))
     phash_dist = int(kf.get("phash_distance", 6))
-    keywords = kf.get("cue_keywords", [])
 
-    print("[keyframes] detecting scenes...")
-    candidates = _scene_candidates(cfg.raw_video, threshold)
-    candidates += _cue_candidates(transcript, keywords)
-    candidates.sort(key=lambda c: c[0])
-
-    # Enforce minimum spacing on candidate timestamps (greedy, earliest wins).
-    spaced: List[Tuple[float, str]] = []
-    last_t = -1e9
-    for t, reason in candidates:
-        if t - last_t >= min_gap:
-            spaced.append((t, reason))
-            last_t = t
+    print("[keyframes] segmenting into board episodes...")
+    spans = _episodes(cfg.raw_video, threshold, min_seconds)
 
     import imagehash
     from PIL import Image
@@ -84,26 +70,28 @@ def run(cfg: Config, transcript: Transcript) -> KeyframeIndex:
     cap = cv2.VideoCapture(str(cfg.raw_video))
     kept: List[Keyframe] = []
     kept_hashes: List["imagehash.ImageHash"] = []
-    for t, reason in spaced:
-        tmp = cfg.frames_dir / f"{int(t * 1000):08d}.jpg"
-        if not _grab_frame(cap, t, tmp):
+    for start, end in spans:
+        t_final = max(0.0, end - 0.4)  # just before the wipe = fullest board
+        tmp = cfg.frames_dir / f"{int(t_final * 1000):08d}.jpg"
+        if not _grab_frame(cap, t_final, tmp):
             continue
         h = imagehash.phash(Image.open(tmp))
         if any((h - kh) <= phash_dist for kh in kept_hashes):
-            tmp.unlink(missing_ok=True)  # near-duplicate board, skip
+            tmp.unlink(missing_ok=True)  # board barely changed across episodes; merge
             continue
         kept_hashes.append(h)
         kept.append(
             Keyframe(
-                timestamp=t,
+                timestamp=t_final,
                 path=str(tmp.relative_to(cfg.data_dir)),
-                reason=reason,
-                transcript_window=transcript.window(t, t),
+                reason="episode_end",
+                # the WHOLE spoken content of this episode = this task's local context
+                transcript_window=transcript.window(start, end, pad=2.0),
             )
         )
     cap.release()
 
     index = KeyframeIndex(lecture=cfg.lecture, frames=kept)
     cfg.keyframe_index_json.write_text(index.model_dump_json(indent=2), encoding="utf-8")
-    print(f"[keyframes] kept {len(kept)} frames -> {cfg.keyframe_index_json}")
+    print(f"[keyframes] {len(spans)} episodes -> kept {len(kept)} frames -> {cfg.keyframe_index_json}")
     return index

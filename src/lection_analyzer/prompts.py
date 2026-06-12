@@ -56,19 +56,21 @@ SYN_SYSTEM = (
 )
 
 SYN_INSTRUCTIONS = """\
-You are given (1) the full lecture transcript and (2) a JSON list of analyzed visual moments.
+You are given ONE lecture episode: the completed board (analyzed below as structured JSON) and
+the lecturer's spoken words DURING that episode. This episode usually teaches a single task
+(occasionally a few; sometimes none).
 
-TRANSCRIPT (original language, may be Hebrew/Russian):
+SPOKEN WORDS during this episode (original language, may be Hebrew/Russian):
 \"\"\"{transcript}\"\"\"
 
-VISUAL MOMENTS (JSON):
+THIS EPISODE'S BOARD (analyzed JSON):
 {moments}
 
-Identify each distinct TASK CLASS the lecture teaches — a procedure/algorithm/calculation a
-student would need to reproduce. Merge moments that belong to the same task class. Ignore pure
-narration with no reproducible method.
+Extract the reproducible TASK CLASS(es) this episode teaches — a procedure/algorithm/calculation
+a student must be able to redo. If the episode is pure narration with no reproducible method,
+return an empty array [].
 
-Return ONE JSON array. Each element:
+Return ONE JSON array (0, 1, or a few elements). Each element:
 
 {{
   "task_class": "snake_case_slug",
@@ -93,9 +95,10 @@ Return ONE JSON array. Each element:
 }}
 
 Rules:
-- Prefer a worked example taken directly from the lecture; preserve its numbers exactly.
+- Use the worked example from THIS board; preserve its numbers exactly.
 - output_format.appearance must reflect the real board layout (use the visual tables/formulas).
-- Output the JSON array only, no prose. Omit "lecture" from source; it is added automatically.
+- "source" is filled in automatically — you may output {{}} for it or omit it.
+- Output the JSON array only, no prose.
 """
 
 
