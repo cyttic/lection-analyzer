@@ -1,0 +1,27 @@
+# Core
+pydantic>=2.6
+pyyaml>=6.0
+
+# Ingest
+gdown>=5.1
+
+# Audio / transcription
+faster-whisper>=1.0
+
+# Keyframes / vision preprocessing
+opencv-python-headless>=4.9
+scenedetect>=0.6.4
+imagehash>=4.3
+Pillow>=10.0
+
+# Local VL / text backend (Kaggle GPU). Versions kept loose; pin in the notebook if needed.
+# transformers/qwen-vl-utils/accelerate/bitsandbytes are heavy — installed in the Kaggle env,
+# not required for the non-GPU stages (ingest/transcribe/keyframes) or the Claude backend.
+transformers>=4.49
+accelerate>=0.30
+qwen-vl-utils>=0.0.8
+
+# Optional API backend
+anthropic>=0.40
+
+# ffmpeg must be available on PATH (apt-get install ffmpeg, preinstalled on Kaggle/Colab).

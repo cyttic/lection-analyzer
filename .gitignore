@@ -1,0 +1,23 @@
+# Pipeline artifacts
+data/
+output/
+*.mp4
+*.mkv
+*.wav
+*.srt
+
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.ipynb_checkpoints/
+
+# Models cache
+models/
+*.bin
+*.safetensors

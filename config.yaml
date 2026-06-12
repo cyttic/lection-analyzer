@@ -1,0 +1,50 @@
+# Lecture Analyzer configuration.
+# Edit this to point at your lecture and to swap model backends per stage.
+
+lecture: lec01            # short id; names the run's output folder
+
+paths:
+  data_dir: data         # intermediate artifacts (gitignored)
+  output_dir: output     # final TaskSpec JSON/MD (gitignored)
+
+ingest:
+  # Provide ONE of these:
+  source_path: null      # local/mounted file, e.g. /kaggle/input/lectures/lec01.mp4
+  gdrive_id: null        # Google Drive file id (needs internet on)
+  gdrive_url: null       # full Google Drive share URL (alternative to gdrive_id)
+
+transcribe:
+  model: large-v3        # faster-whisper model size
+  device: auto           # auto -> cuda if available else cpu
+  compute_type: default  # e.g. float16 (GPU) / int8 (CPU)
+  language: null         # null = autodetect per chunk (he/ru mixed); or force "he"/"ru"
+  vad_filter: true       # voice-activity filter to drop silence
+
+keyframes:
+  scene_threshold: 27.0  # PySceneDetect content threshold (lower = more cuts)
+  min_seconds_between: 4 # suppress keyframes closer than this
+  phash_distance: 6      # perceptual-hash dedup threshold (<= => duplicate)
+  cue_keywords:          # boost sampling when these appear in transcript
+    - algorithm
+    - אלגוריתם
+    - formula
+    - נוסחה
+    - example
+    - דוגמה
+    - table
+    - טבלה
+    - теорема
+    - алгоритм
+    - пример
+
+backends:
+  vl_backend: local          # local | claude
+  synthesis_backend: local   # local | claude
+  local:
+    model_id: Qwen/Qwen2.5-VL-7B-Instruct
+    load_in_4bit: true
+    max_new_tokens: 1024
+  claude:
+    model: claude-opus-4-8
+    max_tokens: 4096
+    # API key read from env ANTHROPIC_API_KEY
