@@ -66,6 +66,11 @@ def _write_txt(transcript: Transcript, path: Path) -> None:
 
 def run(cfg: Config) -> Transcript:
     cfg.ensure_dirs()
+    # Pull a previously-saved transcript from the durable store (Kaggle Dataset) if present,
+    # so we don't re-run Whisper on the same audio across sessions.
+    from .persist import restore_transcript, save_transcript
+
+    restore_transcript(cfg)
     if cfg.transcript_json.exists():
         print(f"[transcribe] cached: {cfg.transcript_json}")
         return Transcript.model_validate_json(cfg.transcript_json.read_text("utf-8"))
@@ -124,4 +129,5 @@ def run(cfg: Config) -> Transcript:
         f"[transcribe]   srt:  {cfg.transcript_srt}\n"
         f"[transcribe]   txt:  {cfg.transcript_txt}  (text + timecodes)"
     )
+    save_transcript(cfg)  # push to the durable store so this never re-transcribes
     return transcript

@@ -41,6 +41,10 @@ class Config:
     def backends(self) -> Dict[str, Any]:
         return self.raw.get("backends", {})
 
+    @property
+    def persist(self) -> Dict[str, Any]:
+        return self.raw.get("persist", {})
+
     # -- artifact paths --------------------------------------------------------
     @property
     def raw_video(self) -> Path:

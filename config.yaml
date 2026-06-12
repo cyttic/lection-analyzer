@@ -29,6 +29,14 @@ keyframes:
   phash_distance: 6        # merge episodes whose final boards are near-identical (<= => dup)
   max_transcript_chars: 6000  # truncate an episode's transcript fed to the models (guardrail)
 
+persist:
+  # Durable transcript cache so a lecture is transcribed once, ever (not once per session).
+  # /kaggle/working is wiped between sessions; a Kaggle Dataset is not.
+  # READ: attach your transcripts dataset to the notebook, point this at its mount path.
+  transcript_dataset_dir: null    # e.g. /kaggle/input/lecture-transcripts
+  # WRITE: dataset slug to push fresh transcripts to (needs your Kaggle token in the env).
+  transcript_dataset_slug: null   # e.g. cyttic/lecture-transcripts
+
 backends:
   vl_backend: local          # local | claude
   synthesis_backend: local   # local | claude

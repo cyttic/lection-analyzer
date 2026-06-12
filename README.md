@@ -52,6 +52,22 @@ to `claude` and re-run `--only vl_report` (set `ANTHROPIC_API_KEY` in the env).
 
 For the Claude backend, add `ANTHROPIC_API_KEY` as a Kaggle **Secret** (cell 2 loads it).
 
+### Transcribe a lecture once, ever
+
+`/kaggle/working` is wiped between sessions, so the on-disk transcript cache doesn't
+survive to the next day. To avoid re-running Whisper on the same audio, transcripts are
+synced to a persistent **Kaggle Dataset** (`persist:` in `config.yaml`):
+
+1. Create a Kaggle API token (Account → *Create New Token* → `kaggle.json`) and add its
+   two fields as Kaggle **Secrets**: `KAGGLE_USERNAME` and `KAGGLE_KEY`.
+2. Set `persist.transcript_dataset_slug: <user>/lecture-transcripts` (cell 3). First run
+   transcribes, then auto-creates/updates that dataset with `<lecture>__transcript.*`.
+3. Next session: **Add Input** → attach that dataset, then set
+   `persist.transcript_dataset_dir: /kaggle/input/lecture-transcripts`. Now `transcribe`
+   **restores** the saved transcript and skips Whisper entirely (`[persist] restored ...`).
+
+Leave both `persist.*` values `null` to disable — the pipeline runs fine without it.
+
 ## Run from the CLI
 
 ```bash
