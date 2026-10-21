@@ -43,7 +43,7 @@ backends:
   local:
     model_id: Qwen/Qwen2.5-VL-7B-Instruct
     load_in_4bit: true
-    max_new_tokens: 1024
+    max_new_tokens: 2048  # higher = fewer truncated/unterminated JSON responses
     max_pixels: 1003520   # 1280*28*28 ≈ 1.0 MP cap on board images (bounds vision tokens)
   claude:
     model: claude-opus-4-8

@@ -1,6 +1,7 @@
 # Core
 pydantic>=2.6
 pyyaml>=6.0
+json-repair>=0.30   # salvage slightly-malformed JSON from local models
 
 # Ingest
 gdown>=5.1

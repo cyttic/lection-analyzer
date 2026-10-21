@@ -11,7 +11,9 @@ A single concrete backend (local Qwen, or Claude) may implement both.
 
 from __future__ import annotations
 
-from typing import List, Protocol, runtime_checkable
+import json
+import re
+from typing import Any, List, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -57,3 +59,37 @@ def extract_json(text: str) -> str:
             if depth == 0:
                 return text[start : i + 1].strip()
     return text[start:].strip()
+
+
+def _basic_repair(s: str) -> str:
+    """Best-effort fixes for the ways local models break JSON.
+
+    Board content is LaTeX-heavy (\\frac, \\gcd, \\underline ...). Models emit those
+    backslashes raw, which is invalid JSON. We escape every backslash that isn't already
+    ``\\\\``/``\\"``/``\\/`` — i.e. treat backslashes as literal LaTeX rather than control
+    escapes (so \\frac stays \\frac instead of becoming a form-feed).
+    """
+    s = re.sub(r'\\(?![\\/"])', r"\\\\", s)
+    s = re.sub(r",\s*([}\]])", r"\1", s)  # drop trailing commas before } or ]
+    return s
+
+
+def loads_lenient(text: str) -> Any:
+    """Parse model JSON, tolerating LaTeX backslashes, trailing commas, and truncation.
+
+    Tries stdlib first, then ``json_repair`` (handles unterminated strings/braces from a
+    cut-off response), then a regex repair — so a slightly malformed response still yields
+    usable data instead of dropping the whole episode.
+    """
+    s = extract_json(text)
+    try:
+        return json.loads(s)
+    except Exception:
+        pass
+    try:
+        from json_repair import repair_json
+
+        return json.loads(repair_json(s))
+    except Exception:
+        pass
+    return json.loads(_basic_repair(s))  # last resort; may still raise, caught by caller

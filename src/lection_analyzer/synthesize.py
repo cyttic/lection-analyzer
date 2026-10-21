@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import re
 
-from .backends.base import LLMBackend, extract_json
+from .backends.base import LLMBackend, loads_lenient
 from .config import Config
 from .prompts import SYN_SYSTEM, synthesis_prompt
 from .schemas import Moment, TaskSource, TaskSpec, Transcript, VLReport
@@ -84,7 +84,7 @@ def run(cfg: Config, report: VLReport, transcript: Transcript, llm: LLMBackend) 
               f"@ {_clock(moment.timestamp_start)} ({moment.kind})")
         try:
             resp = llm.complete(SYN_SYSTEM, user)
-            raw = json.loads(extract_json(resp))
+            raw = loads_lenient(resp)
         except Exception as e:
             print(f"[synthesize]   ! call/parse failed, skipping episode: {e}")
             continue

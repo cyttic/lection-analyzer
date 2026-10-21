@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 
-from .backends.base import VLBackend, extract_json
+from .backends.base import VLBackend, loads_lenient
 from .config import Config
 from .prompts import VL_SYSTEM, vl_prompt
 from .schemas import (
@@ -54,7 +54,7 @@ def run(cfg: Config, index: KeyframeIndex, vl: VLBackend) -> VLReport:
         print(f"[vl_report] {i}/{len(index.frames)} t={kf.timestamp:.1f}s ({kf.reason})")
         try:
             resp = vl.describe([abs_path], prompt)
-            raw = json.loads(extract_json(resp))
+            raw = loads_lenient(resp)
             if isinstance(raw, list):  # model returned a list; take first object
                 raw = next((x for x in raw if isinstance(x, dict)), {})
             moment = _moment_from_raw(kf, raw)
