@@ -10,13 +10,15 @@ One-time setup on the server (venv ~/env, already logged in with `hf auth login`
     pip install faster-whisper gdown
 
 Run:
-    python scripts/a5000_transcribe_he.py "<google drive link>" --name <folder name in the HF repo>
--> https://huggingface.co/datasets/cyttic/lection-transcripts/tree/main/<name>
+    python ~/lection-analyzer/scripts/a5000_transcribe_he.py          # the Drive link (URL) and HF folder (NAME) are set below
+-> https://huggingface.co/datasets/cyttic/lection-transcripts/tree/main/lecture1
 """
 import argparse, ctypes, glob, json, os, shutil, site, sys, tempfile, time
 
 MODEL = "ivrit-ai/whisper-large-v3-ct2"
 REPO = "cyttic/lection-transcripts"
+URL = "https://drive.google.com/file/d/1a5FI63_PAHYamef3GAfFbnBeipELWw2k/view?usp=drive_link"
+NAME = "lecture1"
 
 
 def preload_cuda_libs():
@@ -40,8 +42,8 @@ def clock(t):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("url", help="Google Drive share link of the audio/video file")
-    ap.add_argument("--name", default=None, help="folder in the HF repo (default: the Drive file name without extension)")
+    ap.add_argument("url", nargs="?", default=URL, help="Google Drive share link of the audio/video file (default: URL above)")
+    ap.add_argument("--name", default=NAME, help="folder in the HF repo")
     ap.add_argument("--repo", default=REPO, help="HF dataset repo (created PUBLIC if missing)")
     ap.add_argument("--model", default=MODEL)
     ap.add_argument("--beam", type=int, default=5)
