@@ -63,6 +63,9 @@ def main():
         print(f"downloaded {media} ({os.path.getsize(media) / 1e6:.1f} MB) -> HF folder '{name}'", flush=True)
 
         preload_cuda_libs()
+        import av   # PyAV >= 15 removed av.open(metadata_errors=...), which faster-whisper still passes: drop it
+        _av_open = av.open
+        av.open = lambda *x, **k: _av_open(*x, **{kk: v for kk, v in k.items() if kk != "metadata_errors"})
         from faster_whisper import WhisperModel
         t0 = time.time()
         asr = WhisperModel(a.model, device="cuda", compute_type="float16")
