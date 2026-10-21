@@ -13,7 +13,7 @@ Run:
     python ~/lection-analyzer/scripts/a5000_transcribe_he.py          # the Drive link (URL) and HF folder (NAME) are set below
 -> https://huggingface.co/datasets/cyttic/lection-transcripts/tree/main/lecture1
 """
-import argparse, ctypes, glob, json, os, shutil, site, sys, tempfile, time
+import argparse, ctypes, glob, json, os, re, shutil, site, sys, tempfile, time
 
 MODEL = "ivrit-ai/whisper-large-v3-ct2"
 REPO = "cyttic/lection-transcripts"
@@ -55,7 +55,9 @@ def main():
     media = None
     try:
         import gdown
-        media = gdown.download(url=a.url, output=os.path.join(work, ""), fuzzy=True, quiet=False)
+        fid = re.search(r"/d/([\w-]+)|[?&]id=([\w-]+)", a.url); assert fid, f"no file id in {a.url}"
+        # plain uc?id= link: works with every gdown version (newer ones dropped the fuzzy= argument)
+        media = gdown.download(f"https://drive.google.com/uc?id={fid.group(1) or fid.group(2)}", os.path.join(work, ""), quiet=False)
         assert media and os.path.exists(media), "download failed - is the file shared 'Anyone with the link'?"
         name = a.name or os.path.splitext(os.path.basename(media))[0]
         print(f"downloaded {media} ({os.path.getsize(media) / 1e6:.1f} MB) -> HF folder '{name}'", flush=True)
