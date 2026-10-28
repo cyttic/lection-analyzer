@@ -7,27 +7,30 @@ write transcript_he.{txt,srt,json} + meta.json -> upload them to the PUBLIC HF d
 downloaded media file and the local outputs (also when a step fails).
 
 One-time setup on the server (venv ~/env, already logged in with `hf auth login`):
-    pip install faster-whisper gdown
+    pip install faster-whisper gdown nvidia-cublas-cu12 "nvidia-cudnn-cu12==9.*"
 
 Run:
     python ~/lection-analyzer/scripts/a5000_transcribe_he.py          # the Drive link (URL) and HF folder (NAME) are set below
 -> https://huggingface.co/datasets/cyttic/lection-transcripts/tree/main/lecture1
 """
-import argparse, ctypes, glob, json, os, re, shutil, site, sys, tempfile, time
+import argparse, glob, json, os, re, shutil, site, sys, tempfile, time
 
 MODEL = "ivrit-ai/whisper-large-v3-ct2"
 REPO = "cyttic/lection-transcripts"
-URL = "https://drive.google.com/file/d/1a5FI63_PAHYamef3GAfFbnBeipELWw2k/view?usp=drive_link"
-NAME = "lecture1"
+URL = "https://drive.google.com/file/d/1WIKIOOwVNT-hXk-Pot2WfC36i7zo9CXg/view?usp=sharing"
+NAME = "mihcar_28102026"
 
 
-def preload_cuda_libs():
-    """CTranslate2 needs cuBLAS 12 + cuDNN 9; the pip wheels that come with torch have them, but not on the loader path. Load them globally."""
-    for sp in site.getsitepackages():
-        for pat in ("nvidia/cublas/lib/libcublas*.so.*", "nvidia/cudnn/lib/libcudnn*.so.*"):
-            for lib in sorted(glob.glob(os.path.join(sp, pat))):
-                try: ctypes.CDLL(lib, mode=ctypes.RTLD_GLOBAL)
-                except OSError: pass
+def cuda12_lib_path():
+    """CTranslate2 needs cuBLAS 12 + cuDNN 9 (pip: nvidia-cublas-cu12, nvidia-cudnn-cu12). Put every site-packages/nvidia/*/lib on
+    LD_LIBRARY_PATH and restart this process once (the loader reads LD_LIBRARY_PATH only at start)."""
+    dirs = [d for sp in site.getsitepackages() for d in sorted(glob.glob(os.path.join(sp, "nvidia", "*", "lib")))]
+    cur = os.environ.get("LD_LIBRARY_PATH", "")
+    if dirs and not os.environ.get("_TRANSCRIBE_LIBPATH"):
+        os.environ["LD_LIBRARY_PATH"] = ":".join(dirs + ([cur] if cur else [])); os.environ["_TRANSCRIBE_LIBPATH"] = "1"
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+    if not any(os.path.exists(os.path.join(d, "libcublas.so.12")) for d in dirs):
+        print('WARNING: libcublas.so.12 not found - run: pip install nvidia-cublas-cu12 "nvidia-cudnn-cu12==9.*"', flush=True)
 
 
 def srt_time(t):
@@ -49,6 +52,7 @@ def main():
     ap.add_argument("--beam", type=int, default=5)
     ap.add_argument("--no-push", action="store_true", help="test: keep the outputs locally, do not upload")
     a = ap.parse_args()
+    cuda12_lib_path()
 
     work = tempfile.mkdtemp(prefix="transcribe_", dir=os.path.expanduser("~"))
     out = os.path.join(work, "out"); os.makedirs(out)
@@ -62,7 +66,6 @@ def main():
         name = a.name or os.path.splitext(os.path.basename(media))[0]
         print(f"downloaded {media} ({os.path.getsize(media) / 1e6:.1f} MB) -> HF folder '{name}'", flush=True)
 
-        preload_cuda_libs()
         import av   # PyAV >= 15 removed av.open(metadata_errors=...), which faster-whisper still passes: drop it
         _av_open = av.open
         av.open = lambda *x, **k: _av_open(*x, **{kk: v for kk, v in k.items() if kk != "metadata_errors"})
